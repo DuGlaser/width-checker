@@ -3,36 +3,20 @@ package main
 import (
 	"fmt"
 	"log"
+	"sort"
 
-	"github.com/morikuni/aec"
+	"github.com/DuGlaser/width-checker/model"
+	"github.com/cheggaaa/pb/v3"
 	"github.com/mxschmitt/playwright-go"
 )
 
-type DeviceOption struct {
-	min      int
-	max      int
-	interval int
-}
-
-type Result struct {
-	browser     string
-	width       int
-	scrollWidth interface{}
-}
-
-var (
-	green = aec.Color8BitF(aec.NewRGB8Bit(64, 255, 64))
-	red   = aec.EmptyBuilder.LightRedF().ANSI
-)
-
-func widthCheck(bt playwright.BrowserType, url string, opt DeviceOption) {
+func WidthCheck(bt playwright.BrowserType, resultList chan model.Result, url string, opt model.DeviceOption) {
 	browser, err := bt.Launch()
 	if err != nil {
 		log.Fatalf("could not launch browser: %v", err)
 	}
-	defer browser.Close()
 
-	for i := opt.min; i <= opt.max; i += opt.interval {
+	for i := opt.Min; i <= opt.Max; i += opt.Interval {
 		context, err := browser.NewContext(playwright.BrowserNewContextOptions{
 			IsMobile: playwright.Bool(false),
 			Viewport: &playwright.BrowserNewContextOptionsViewport{
@@ -40,7 +24,6 @@ func widthCheck(bt playwright.BrowserType, url string, opt DeviceOption) {
 				Height: playwright.Int(i),
 			},
 		})
-		defer context.Close()
 		if err != nil {
 			log.Fatalf("could not create context: %v", err)
 		}
@@ -69,24 +52,19 @@ func widthCheck(bt playwright.BrowserType, url string, opt DeviceOption) {
 		if err != nil {
 			log.Fatalf("could not get scrollWidth: %v\n", err)
 		}
-		scrollWidth, _ := r.JSONValue()
+		pageWidth, _ := r.JSONValue()
 
-		result := &Result{
-			browser:     bt.Name(),
-			width:       i,
-			scrollWidth: scrollWidth,
+		result := &model.Result{
+			Browser:     bt.Name(),
+			DeviceWidth: i,
+			PageWidth:   pageWidth.(int),
 		}
+		resultList <- *result
 
-		browserOutput := fmt.Sprintf("[ %-9v]", result.browser)
-		resultOutput := fmt.Sprintf(" width: %-4v  scrollWidth: %-4v", result.width, result.scrollWidth)
-
-		fmt.Print(green.Apply(browserOutput))
-		if result.width == result.scrollWidth {
-			fmt.Println(green.Apply(resultOutput))
-		} else {
-			fmt.Println(red.Apply(resultOutput))
-		}
+		context.Close()
 	}
+
+	browser.Close()
 }
 
 func main() {
@@ -95,31 +73,48 @@ func main() {
 		log.Fatalf("could not start playwright: %v", err)
 	}
 
-	url := ""
+	url := "http://example.com"
+	deviceOption := &model.DeviceOption{
+		Min:      320,
+		Max:      1440,
+		Interval: 200,
+	}
 
-	ch1 := make(chan bool)
-	ch2 := make(chan bool)
+	count := deviceOption.Pattern() * 2
 
-	go func(pw *playwright.Playwright) {
-		widthCheck(pw.Chromium, url, *&DeviceOption{
-			min:      320,
-			max:      1440,
-			interval: 50,
-		})
+	ch := make(chan model.Result, count)
 
-		ch1 <- true
-	}(pw)
+	go WidthCheck(pw.Chromium, ch, url, *deviceOption)
+	go WidthCheck(pw.Firefox, ch, url, *deviceOption)
 
-	go func(pw *playwright.Playwright) {
-		widthCheck(pw.Firefox, url, *&DeviceOption{
-			min:      320,
-			max:      1440,
-			interval: 50,
-		})
+	fmt.Println()
 
-		ch2 <- true
-	}(pw)
+	errorResultList := model.ResultList{}
 
-	<-ch1
-	<-ch2
+	bar := pb.StartNew(count)
+	i := 0
+
+	for result := range ch {
+		i++
+		bar.Increment()
+
+		if result.DeviceWidth != result.PageWidth {
+			errorResultList = append(errorResultList, result)
+		}
+
+		if i >= count {
+			break
+		}
+	}
+
+	bar.Finish()
+
+	if len(errorResultList) == 0 {
+		errorResultList.PrintSuccess()
+	} else {
+		sort.Sort(model.ResultList(errorResultList))
+		errorResultList.PrintError()
+	}
+
+	pw.Stop()
 }
