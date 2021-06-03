@@ -21,6 +21,8 @@ var (
 
 func main() {
 	app := &cli.App{
+		Name:  "width-checker",
+		Usage: "A cli tool to check if a page's width exceeds the device's width.",
 		Flags: []cli.Flag{
 			&cli.UintFlag{
 				Name:        "max",
