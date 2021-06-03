@@ -2,6 +2,8 @@ package model
 
 import (
 	"fmt"
+
+	"github.com/fatih/color"
 )
 
 type Result struct {
@@ -10,11 +12,21 @@ type Result struct {
 	PageWidth   int
 }
 
-func (r *Result) PrintError() {
-	browserOutput := fmt.Sprintf("[ %-9v]", r.Browser)
-	resultOutput := fmt.Sprintf(" deviceWidth: %-4v  pageWidth: %-4v", r.DeviceWidth, r.PageWidth)
+func (r Result) infoLabel() string {
+	return fmt.Sprintf("%-9v %-4vpx | ", r.Browser, r.DeviceWidth)
+}
+
+func (r Result) PrintSuccess() {
+	browserOutput := r.infoLabel()
 	fmt.Print(browserOutput)
-	fmt.Println(resultOutput)
+	color.Green("SUCCESS")
+}
+
+func (r Result) PrintError() {
+	browserOutput := r.infoLabel()
+	resultOutput := fmt.Sprintf("ERROR: %vpx out of the device.", r.PageWidth-r.DeviceWidth)
+	fmt.Print(browserOutput)
+	color.Red(resultOutput)
 }
 
 type ResultList []Result
@@ -29,6 +41,18 @@ func (r ResultList) Less(i, j int) bool {
 		return false
 	}
 	return r[i].Browser < r[j].Browser
+}
+
+func (r ResultList) PrintResult() {
+	fmt.Println()
+
+	for _, result := range r {
+		if result.DeviceWidth == result.PageWidth {
+			result.PrintSuccess()
+		} else {
+			result.PrintError()
+		}
+	}
 }
 
 func (r ResultList) PrintError() {
