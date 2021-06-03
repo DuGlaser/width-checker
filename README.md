@@ -1,6 +1,6 @@
 # width-checker
 
-`width-checker` is a cli tool to check if a page's width exceeds the device's width.
+`width-checker` is a cli tool to check if a page's width exceeds the device's width.  
 This supports `firefox` and `chromium` by default. (powered by playwright)
 
 ## Usage
